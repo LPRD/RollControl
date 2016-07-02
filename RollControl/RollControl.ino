@@ -11,6 +11,8 @@
 float Kp =  2.8;
 float Ki =  0.8;
 float Kd = -0.3;
+float rollTarget = 0.00;    // desired angular rotation
+float rollTol = 0.00;
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 Servo servo1;
@@ -22,33 +24,35 @@ char filename[] = "DATA000.csv";
 #define servo1Pin  2
 #define servo2Pin  3
 #define loopDelay 200
-#define dataTime ((float)loopDelay)/1000      // time between data - approximated using millis()
-#define gyro_size 10
+#define dataTime ((float)loopDelay)/1000      // time between data
+#define gyro_size 10        // uses 0 : gyro_size-1 valid data points
 float gyro[gyro_size];
 int i = 0;
 int b;  int n;  int m;  int j;  int k;  int l;
-
-float rollTarget = 0.00;       // desired angular rotation
-float rollTol = 0.00;
-float rollProp;
-float rollInt;
-float rollDer;
 
 // Offsets to make servos align vertically at exactly v=90
 int servo1Offset = 4;       // 4 for MG995 #1
 int servo2Offset = 0;       // 0 for MG995 #2
 int v = 90;
 int vMax = 12;              // max angular deflection (avoids stall)
+float rollProp;
+float rollInt;
+float rollDer;
+
 
 void setup() {
   pinMode(1,OUTPUT);
   servo1.attach(3);
   servo2.attach(2);
   Serial.begin(9600);
+  Serial.println("");
+  
   if (!bno.begin()) {
     Serial.println("BNO055 err");
     while (1);
   }
+  
+  if (! RTC.isrunning()) { RTC.adjust(DateTime(__DATE__, __TIME__)); }
 
   if (!SD.begin(10)) { Serial.println("SD err"); }
   
@@ -64,8 +68,7 @@ void setup() {
       break;
     }
   }
-  
-  //Serial.println("\tReady");
+    
   Serial.print("\tv = ");
   Serial.println(v);
   servo1.write(v + servo1Offset);
@@ -143,7 +146,10 @@ void loop() {
     dataFile.print(now.minute(), DEC);  dataFile.print(':');
     dataFile.print(now.second(), DEC);  dataFile.print(", ");
     
-    dataFile.println(gyro[i]);
+    dataFile.print(gyro[i]);        dataFile.print(", ");
+    dataFile.print(gyroscope.y());  dataFile.print(", ");
+    dataFile.print(gyroscope.x());  dataFile.println("");
+    dataFile.flush();
   }
   delay(time0 + loopDelay - millis());     // continuously adjusted for desired dataTime
 }

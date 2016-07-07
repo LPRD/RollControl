@@ -7,12 +7,13 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
+#include <avr/pgmspace.h>
 
-float Kp =  2.8;
-float Ki =  0.8;
-float Kd = -0.3;
-float rollTarget = 0.00;    // desired angular rotation
-float rollTol = 0.00;
+#define Kp 2.8
+#define Ki 0.8
+#define Kd -0.3
+#define rollTarget 0.00    // desired angular rotation
+#define rollTol 0.00
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 Servo servo1;
@@ -31,10 +32,12 @@ int i = 0;
 int b;  int n;  int m;  int j;  int k;  int l;
 
 // Offsets to make servos align vertically at exactly v=90
-int servo1Offset = 4;       // 4 for MG995 #1
-int servo2Offset = 0;       // 0 for MG995 #2
+#define servo1Offset 4       // 4 for MG995 #1
+#define servo2Offset 0       // 0 for MG995 #2
+
 int v = 90;
-int vMax = 12;              // max angular deflection (avoids stall)
+#define vMax 12              // max angular deflection (avoids stall)
+
 float rollProp;
 float rollInt;
 float rollDer;
@@ -44,32 +47,30 @@ float rollDer;
   SEND_ITEM(y_##field, value.y())       \
   SEND_ITEM(z_##field, value.z())
 
-// Save global bytes by sharing the seperator string
-const char *seperator = ", ";
-
 #define WRITE_CSV_ITEM(value) \
-  dataFile.print(seperator); dataFile.print(value);
+  dataFile.print(F(", ")); dataFile.print(value);
 #define WRITE_CSV_VECTOR_ITEM(value)  \
   WRITE_CSV_ITEM(value.x())           \
   WRITE_CSV_ITEM(value.y())           \
   WRITE_CSV_ITEM(value.z())
-  
+
+unsigned int missed_deadlines = 0;
 
 void setup() {
   pinMode(1,OUTPUT);
   servo1.attach(3);
   servo2.attach(2);
   Serial.begin(9600);
-  Serial.println("");
+  Serial.println();
   
   if (!bno.begin()) {
-    Serial.println("BNO055 err");
+    Serial.println(F("BNO055 err"));
     while (1);
   }
   
   if (! RTC.isrunning()) { RTC.adjust(DateTime(__DATE__, __TIME__)); }
 
-  if (!SD.begin(10)) { Serial.println("SD err"); }
+  if (!SD.begin(10)) { Serial.println(F("SD err")); }
   
   for (uint16_t nameCount = 0; nameCount < 1000; nameCount++) {
     filename[4] = nameCount/100 + '0';
@@ -78,14 +79,12 @@ void setup() {
     if (!SD.exists(filename))     // only open if file doesn't exist
     {
       dataFile = SD.open(filename, FILE_WRITE);
-      Serial.print("writing ");
+      Serial.print(F("writing to "));
       Serial.println(filename);
       break;
     }
   }
-    
-  Serial.print("\tv = ");
-  Serial.println(v);
+  
   servo1.write(v + servo1Offset);
   servo2.write(v + servo2Offset);
   delay(1000);
@@ -136,7 +135,7 @@ void loop() {
         servo2.write(v + servo2Offset);
         
         // print angle components to serial
-        Serial.print  ("90");
+ /*       Serial.print  ("90");
         Serial.print  ("+");
         Serial.print  (Kp*rollProp);
         Serial.print  ("+");
@@ -144,11 +143,12 @@ void loop() {
         Serial.print  ("+");
         Serial.print  (Kd*rollDer);
         Serial.print  ("=");
-        Serial.println(v);
+        Serial.println(v);*/
   }
 
   // Downlink
   BEGIN_SEND
+  SEND_ITEM(missed_deadlines, missed_deadlines);
   SEND_ITEM(temperature, temp);
   SEND_VECTOR_ITEM(magnetometer, magnetometer);
   SEND_VECTOR_ITEM(gyro, gyroscope);
@@ -156,6 +156,8 @@ void loop() {
   SEND_VECTOR_ITEM(acceleration, accelerometer);
   END_SEND
 
+  /*BEGIN_READ
+  END_READ*/
 
   if (dataFile) {
     DateTime now = RTC.now();
@@ -174,6 +176,11 @@ void loop() {
     
     dataFile.println();
     dataFile.flush();
+  }
+  if (millis() > time0 + loopPeriod) {
+    Serial.print(F("Schedule err: "));
+    Serial.println(time0 + loopPeriod - millis());
+    missed_deadlines++;
   }
   delay(time0 + loopPeriod - millis());     // continuously adjusted for desired dataTime
 }

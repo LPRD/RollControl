@@ -60,7 +60,7 @@ void setup() {
   pinMode(1,OUTPUT);
   servo1.attach(3);
   servo2.attach(2);
-  Serial.begin(38400);
+  Serial.begin(57600);
   Serial.println();
   
   if (!bno.begin()) {
@@ -91,6 +91,8 @@ void setup() {
   servo1.write(v + servo1Offset);
   servo2.write(v + servo2Offset);
   delay(1000);
+  
+  SEND(missed_deadlines, 0);
 }
 
 void loop() {
@@ -162,7 +164,7 @@ void loop() {
   END_READ*/
 
   if (dataFile) {
-    WRITE_CSV_ITEM(millis())
+    dataFile.print(millis());           dataFile.print(',');
     
     DateTime now = RTC.now();
     dataFile.print(now.year(), DEC);    dataFile.print('/');
@@ -183,7 +185,7 @@ void loop() {
   }
   if (millis() > time0 + loopPeriod) {
     Serial.print(F("Schedule err: "));
-    Serial.println(time0 + loopPeriod - (signed)millis());
+    Serial.println(time0 + loopPeriod - (signed long)millis());
     SEND(missed_deadlines, missed_deadlines);
     missed_deadlines++;
   }

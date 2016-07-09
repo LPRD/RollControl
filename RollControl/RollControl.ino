@@ -60,7 +60,7 @@ void setup() {
   pinMode(1,OUTPUT);
   servo1.attach(3);
   servo2.attach(2);
-  Serial.begin(9600);
+  Serial.begin(38400);
   Serial.println();
   
   if (!bno.begin()) {
@@ -183,9 +183,11 @@ void loop() {
   }
   if (millis() > time0 + loopPeriod) {
     Serial.print(F("Schedule err: "));
-    Serial.println(time0 + loopPeriod - millis());
+    Serial.println(time0 + loopPeriod - (signed)millis());
     SEND(missed_deadlines, missed_deadlines);
     missed_deadlines++;
   }
-  delay(time0 + loopPeriod - millis());     // continuously adjusted for desired dataTime
+  else {
+    delay(time0 + loopPeriod - millis());     // continuously adjusted for desired dataTime
+  }
 }

@@ -84,6 +84,9 @@ void setup() {
       break;
     }
   }
+
+  // Print csv header
+  dataFile.println(F("abs time, rtc date, rtc time, temperature, x_magnetometer, y_magnetometer, z_magnetometer, x_gyro, y_gyro, z_gyro, x_euler_angle, y_euler_angle, z_euler_angle, x_acceleration, y_acceleration, z_acceleration"));
   
   servo1.write(v + servo1Offset);
   servo2.write(v + servo2Offset);
@@ -148,7 +151,6 @@ void loop() {
 
   // Downlink
   BEGIN_SEND
-  SEND_ITEM(missed_deadlines, missed_deadlines);
   SEND_ITEM(temperature, temp);
   SEND_VECTOR_ITEM(magnetometer, magnetometer);
   SEND_VECTOR_ITEM(gyro, gyroscope);
@@ -160,10 +162,12 @@ void loop() {
   END_READ*/
 
   if (dataFile) {
+    WRITE_CSV_ITEM(millis())
+    
     DateTime now = RTC.now();
     dataFile.print(now.year(), DEC);    dataFile.print('/');
     dataFile.print(now.month(), DEC);   dataFile.print('/');
-    dataFile.print(now.day(), DEC);     dataFile.print(' ');
+    dataFile.print(now.day(), DEC);     dataFile.print(',');
     dataFile.print(now.hour(), DEC);    dataFile.print(':');
     dataFile.print(now.minute(), DEC);  dataFile.print(':');
     dataFile.print(now.second(), DEC);
@@ -180,6 +184,7 @@ void loop() {
   if (millis() > time0 + loopPeriod) {
     Serial.print(F("Schedule err: "));
     Serial.println(time0 + loopPeriod - millis());
+    SEND(missed_deadlines, missed_deadlines);
     missed_deadlines++;
   }
   delay(time0 + loopPeriod - millis());     // continuously adjusted for desired dataTime

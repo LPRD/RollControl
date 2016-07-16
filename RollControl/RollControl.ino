@@ -60,7 +60,7 @@ void setup() {
   pinMode(1,OUTPUT);
   servo1.attach(3);
   servo2.attach(2);
-  Serial.begin(57600);
+  Serial.begin(38400, SERIAL_8N2);
   Serial.println();
   
   if (!bno.begin()) {

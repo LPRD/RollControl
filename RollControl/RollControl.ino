@@ -70,23 +70,25 @@ void setup() {
   
   if (! RTC.isrunning()) { RTC.adjust(DateTime(__DATE__, __TIME__)); }
 
-  if (!SD.begin(10)) { Serial.println(F("SD err")); }
-  
-  for (uint16_t nameCount = 0; nameCount < 1000; nameCount++) {
-    filename[4] = nameCount/100 + '0';
-    filename[5] = (nameCount%100)/10 + '0';
-    filename[6] = nameCount%10 + '0';
-    if (!SD.exists(filename))     // only open if file doesn't exist
-    {
-      dataFile = SD.open(filename, FILE_WRITE);
-      Serial.print(F("writing to "));
-      Serial.println(filename);
-      break;
+  if (!SD.begin(10))
+    Serial.println(F("SD err"));
+  else {
+    for (uint16_t nameCount = 0; nameCount < 1000; nameCount++) {
+      filename[4] = nameCount/100 + '0';
+      filename[5] = (nameCount%100)/10 + '0';
+      filename[6] = nameCount%10 + '0';
+      if (!SD.exists(filename))     // only open if file doesn't exist
+      {
+        dataFile = SD.open(filename, FILE_WRITE);
+        Serial.print(F("writing to "));
+        Serial.println(filename);
+        break;
+      }
     }
   }
 
   // Print csv header
-  dataFile.println(F("abs time, rtc date, rtc time, temperature, x_magnetometer, y_magnetometer, z_magnetometer, x_gyro, y_gyro, z_gyro, x_euler_angle, y_euler_angle, z_euler_angle, x_acceleration, y_acceleration, z_acceleration"));
+  dataFile.println(F("abs time,sys date,sys time,temperature,x_magnetometer,y_magnetometer,z_magnetometer,x_gyro,y_gyro,z_gyro,x_euler_angle,y_euler_angle,z_euler_angle,x_acceleration,y_acceleration,z_acceleration"));
   
   servo1.write(v + servo1Offset);
   servo2.write(v + servo2Offset);

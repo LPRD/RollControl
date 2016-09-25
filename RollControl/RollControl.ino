@@ -61,28 +61,55 @@ void setup() {
   
   while (!bno.begin()) {
     Serial.println(F("BNO055 err"));
+<<<<<<< HEAD
     digitalWrite(7,HIGH); delay(1000); digitalWrite(7,LOW);
     }
   if (!RTC.isrunning()) { RTC.adjust(DateTime(__DATE__, __TIME__)); }  
   if (!SD.begin(10)) { Serial.println(F("SD err")); }
   else {                              // generates file name
+=======
+    while (1);
+  }
+  
+  if (! RTC.isrunning()) { RTC.adjust(DateTime(__DATE__, __TIME__)); }
+
+  if (!SD.begin(10))
+    Serial.println(F("SD err"));
+  else {
+>>>>>>> 01f23fe70c4ae011c3b11b67b254386e475bf626
     for (uint16_t nameCount = 0; nameCount < 1000; nameCount++) {
       filename[4] = nameCount/100 + '0';
       filename[5] = (nameCount%100)/10 + '0';
       filename[6] = nameCount%10 + '0';
+<<<<<<< HEAD
       if (!SD.exists(filename)) {       // opens if file doesn't exist
         dataFile = SD.open(filename, FILE_WRITE);
         Serial.print(F("\twriting "));
         Serial.println(filename);
         dataFile.println(F("abs time,sys date,sys time,temperature,x_magnetometer,y_magnetometer,z_magnetometer,x_gyro,y_gyro,z_gyro,x_euler_angle,y_euler_angle,z_euler_angle,x_acceleration,y_acceleration,z_acceleration"));
+=======
+      if (!SD.exists(filename))     // only open if file doesn't exist
+      {
+        dataFile = SD.open(filename, FILE_WRITE);
+        Serial.print(F("writing to "));
+        Serial.println(filename);
+>>>>>>> 01f23fe70c4ae011c3b11b67b254386e475bf626
         break;
       }
     }
   }
+<<<<<<< HEAD
+=======
+
+  // Print csv header
+  dataFile.println(F("abs time,sys date,sys time,temperature,x_magnetometer,y_magnetometer,z_magnetometer,x_gyro,y_gyro,z_gyro,x_euler_angle,y_euler_angle,z_euler_angle,x_acceleration,y_acceleration,z_acceleration"));
+>>>>>>> 01f23fe70c4ae011c3b11b67b254386e475bf626
   
   servo1.write(v + servo1Offset);
   servo2.write(v + servo2Offset);
   delay(1000);
+  
+  SEND(missed_deadlines, 0);
 }
 
 
@@ -141,6 +168,7 @@ void loop() {
   /*BEGIN_READ
   END_READ*/
 
+<<<<<<< HEAD
   checkSD = millis();                     // checks for SD removal
   for(i=0;i<1;i++){                       // allows 'break'
     if ((dataFile)&&(flag<2)) {
@@ -165,10 +193,36 @@ void loop() {
       dataFile.println();                 dataFile.flush();
       digitalWrite(7,LOW);
     }
+=======
+  if (dataFile) {
+    dataFile.print(millis());           dataFile.print(',');
+    
+    DateTime now = RTC.now();
+    dataFile.print(now.year(), DEC);    dataFile.print('/');
+    dataFile.print(now.month(), DEC);   dataFile.print('/');
+    dataFile.print(now.day(), DEC);     dataFile.print(',');
+    dataFile.print(now.hour(), DEC);    dataFile.print(':');
+    dataFile.print(now.minute(), DEC);  dataFile.print(':');
+    dataFile.print(now.second(), DEC);
+
+    WRITE_CSV_ITEM(temp)
+    WRITE_CSV_VECTOR_ITEM(magnetometer)
+    WRITE_CSV_VECTOR_ITEM(gyroscope)
+    WRITE_CSV_VECTOR_ITEM(euler)
+    WRITE_CSV_VECTOR_ITEM(accelerometer)
+    
+    dataFile.println();
+    dataFile.flush();
+>>>>>>> 01f23fe70c4ae011c3b11b67b254386e475bf626
   }
   if (time0 + loopDelay < millis()) {
     Serial.print(F("Schedule err: "));
+<<<<<<< HEAD
     Serial.println(time0 + loopDelay - (signed long)millis());
+=======
+    Serial.println(time0 + loopPeriod - (signed long)millis());
+    SEND(missed_deadlines, missed_deadlines);
+>>>>>>> 01f23fe70c4ae011c3b11b67b254386e475bf626
     missed_deadlines++;
     SEND(missed_deadlines, missed_deadlines);
   }

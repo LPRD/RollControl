@@ -9,11 +9,11 @@
 #include <utility/imumaths.h>
 //#include <avr/pgmspace.h>
 
-float rollTarget = 0.00;    // desired angular rotation
-float rollTol    = 0.00;
-float Kp =  2.8;
-float Ki =  2.0;
-float Kd = -0.3;
+#define rollTarget = 0.00;    // desired angular rotation
+#define rollTol    = 0.00;
+#define Kp =  2.8;
+#define Ki =  2.0;
+#define Kd = -0.3;
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 Servo servo1;
@@ -33,10 +33,10 @@ int i=0;  int b=0;  int j=0;  int k=0;  int l=0;  int m=0;  int n=0;
 int flag = 0;       long checkSD;
 
 // Offsets to make servos align vertically at exactly v=90
-#define servo1Offset = 4;       // for MG995 #1
-#define servo2Offset = 0;       // for MG995 #2
+#define servo1Offset = 4;   // for MG995 #1
+#define servo2Offset = 0;   // for MG995 #2
+#define vMax = 12;          // max angular deflection (avoids stall)
 int v = 90;
-#define vMax = 12;              // max angular deflection (avoids stall)
 float rollProp;  float rollInt;  float rollDer;
 
 #define SEND_VECTOR_ITEM(field,value) \

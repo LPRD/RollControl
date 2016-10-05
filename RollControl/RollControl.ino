@@ -1,3 +1,6 @@
+#define flying 0                // Change to 1 before flight    !!!!!!!!!!!!!!!!!!!!!!!!
+long time1;
+long time2;
 #include <Wire.h>
 #include <Servo.h>
 #include <SPI.h>
@@ -9,7 +12,7 @@
 #include <utility/imumaths.h>
 #include <avr/pgmspace.h>
 
-#define rollTarget 0.00    // desired angular rotation
+#define rollTarget 0.00         // desired angular rotation
 #define rollTol    0.00
 #define Kp  2.8
 #define Ki  2.0
@@ -22,20 +25,23 @@ RTC_DS1307 RTC;
 File dataFile;
 char filename[] = "DATA000.csv";
 
-#define servo1Pin 3
-#define servo2Pin 2         // current setup
-#define gyro_size 8         // uses 0 (gyro_size-1 valid data points)
-#define loopDelay 200       // min 70
-#define SDdelay   20
+#define LED           6
+#define servo1Pin     3
+#define servo2Pin     2         // current setup
+#define gyro_size     8         // uses 0 (gyro_size-1 valid data points)
+#define loopDelay     200       // min 200
+#define SDdelay       20
+#define flagIncrement 10
+#define sdErrorLimit  2
 #define dataTime ((float)loopDelay)/1000      // time between data
 float gyro[gyro_size];
 int i=0;  int b=0;  int j=0;  int k=0;  int l=0;  int m=0;  int n=0;
 int flag = 0;       long checkSD;
 
 // Offsets to make servos align vertically at exactly v=90
-#define servo1Offset 4      // for MG995 #1
-#define servo2Offset 0      // for MG995 #2
-#define vMax 12             // max angular deflection (avoids stall)
+#define servo1Offset 4          // for MG995 #1
+#define servo2Offset 0          // for MG995 #2
+#define vMax 12                 // max angular deflection (avoids stall)
 int v = 90;
 float rollProp;  float rollInt;  float rollDer;
 
@@ -53,36 +59,34 @@ unsigned int missed_deadlines = 0;
 
 
 void setup() {
-  //pinMode(7,OUTPUT);                  //  makes LED flash brightly
+  if (flying) { pinMode(LED,OUTPUT); }              //  makes LED flash brightly
   servo1.attach(3);
   servo2.attach(2);
-  Serial.begin(38400, SERIAL_8N2);
-  Serial.println();
-  
-  while (!bno.begin()) {
+  Serial.begin(38400, SERIAL_8N2);    Serial.println();
+  servo1.write(v + servo1Offset);
+  servo2.write(v + servo2Offset);
+
+  while (!bno.begin()) {                            // flashes to signal error
     Serial.println(F("BNO055 err"));
-    digitalWrite(7,HIGH); delay(1000); digitalWrite(7,LOW);
-    }
-  if (!RTC.isrunning()) { RTC.adjust(DateTime(__DATE__, __TIME__)); }  
+    digitalWrite(LED,LOW); delay(1000); digitalWrite(LED,HIGH);
+  }
+  if (!RTC.isrunning()) { RTC.adjust(DateTime(__DATE__, __TIME__)); }
   if (!SD.begin(10)) { Serial.println(F("SD err")); }
-  else {                              // generates file name
+  else {                                            // generates file name
     for (uint16_t nameCount = 0; nameCount < 1000; nameCount++) {
       filename[4] = nameCount/100 + '0';
       filename[5] = (nameCount%100)/10 + '0';
       filename[6] = nameCount%10 + '0';
-      if (!SD.exists(filename)) {       // opens if file doesn't exist
+      if (!SD.exists(filename)) {                   // opens if file doesn't exist
         dataFile = SD.open(filename, FILE_WRITE);
         Serial.print(F("\twriting "));
         Serial.println(filename);
-        dataFile.println(F("abs time,sys date,sys time,temperature,x_magnetometer,y_magnetometer,z_magnetometer,x_gyro,y_gyro,z_gyro,x_euler_angle,y_euler_angle,z_euler_angle,x_acceleration,y_acceleration,z_acceleration"));
+        dataFile.println(F("abs time,sys date,sys time,temperature,x_magnetometer,y_magnetometer,z_magnetometer,x_gyro,y_gyro,z_gyro,x_euler_angle,y_euler_angle,z_euler_angle,x_acceleration,y_acceleration,z_acceleration,servo_angle"));
         break;
       }
     }
   }
   
-  servo1.write(v + servo1Offset);
-  servo2.write(v + servo2Offset);
-  delay(1000);
 }
 
 
@@ -96,11 +100,7 @@ void loop() {
   imu::Vector<3> accelerometer = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
   int8_t temp = bno.getTemp();
   gyro[i] = gyroscope.z();              // change dep. on orientation (x,y,z)
-  
-  Serial.print("gyro.z :  ");
-  Serial.print(gyro[i]);
-  Serial.println();
-  
+    
   // Fixes reference errors with circular buffer
   b = i - 1;    if (b<1)  { b = b + gyro_size; }
   n = i - 2;    if (n<1)  { n = n + gyro_size; }
@@ -120,8 +120,9 @@ void loop() {
         else if (v<90-vMax) { v = 90 - vMax; }
         servo1.write(v + servo1Offset);
         servo2.write(v + servo2Offset);
-        
-        /*// print angle components to serial
+
+        /*// print components to serial
+        Serial.print("gyro.z :  "); Serial.println(gyro[i]);
         Serial.print  ("  90");       Serial.print  ("  +  ");
         Serial.print  (Kp*rollProp);  Serial.print  ("  +  ");
         Serial.print  (Ki*rollInt);   Serial.print  ("  +  ");
@@ -131,41 +132,42 @@ void loop() {
 
   // Downlink
   BEGIN_SEND
-  SEND_ITEM(temperature, temp);
-  SEND_VECTOR_ITEM(magnetometer, magnetometer);
-  SEND_VECTOR_ITEM(gyro, gyroscope);
-  SEND_VECTOR_ITEM(euler_angle, euler);
-  SEND_VECTOR_ITEM(acceleration, accelerometer);
+  SEND_ITEM(temperature, temp);                     // 1 ms
+  SEND_VECTOR_ITEM(magnetometer,  magnetometer);    // 10 ms
+  SEND_VECTOR_ITEM(gyro        ,  gyroscope);       // 10 ms
+  SEND_VECTOR_ITEM(euler_angle ,  euler);           // 18 ms
+  SEND_VECTOR_ITEM(acceleration,  accelerometer);   // 18 ms
+  SEND_ITEM(servo_angle, v);                        // 4 ms
   END_SEND
-
-  /*BEGIN_READ
-  END_READ*/
-
-  checkSD = millis();                     // checks for SD removal
-  for(i=0;i<1;i++){                       // allows 'break'
-    if ((dataFile)&&(flag<2)) {
-      DateTime now = RTC.now();
-      dataFile.print(millis());           dataFile.print(',');
-      dataFile.print(now.year(), DEC);    dataFile.print('/');
-          if (millis() > checkSD + SDdelay) { flag++; digitalWrite(7,HIGH); break; }
-      dataFile.print(now.month(), DEC);   dataFile.print('/');
-      dataFile.print(now.day(), DEC);     dataFile.print(',');
-          if (millis() > checkSD + SDdelay) { flag++; digitalWrite(7,HIGH); break; }
-      dataFile.print(now.hour(), DEC);    dataFile.print(':');
-      dataFile.print(now.minute(), DEC);  dataFile.print(':');
-      dataFile.print(now.second(), DEC);
-          if (millis() > checkSD + SDdelay) { flag++; digitalWrite(7,HIGH); break; }
-      WRITE_CSV_ITEM(temp)
-      WRITE_CSV_VECTOR_ITEM(magnetometer)
-      WRITE_CSV_VECTOR_ITEM(gyroscope)
-          if (millis() > checkSD + SDdelay) { flag++; digitalWrite(7,HIGH); break; }
-      WRITE_CSV_VECTOR_ITEM(euler)
-      WRITE_CSV_VECTOR_ITEM(accelerometer)
-          if (millis() > checkSD + SDdelay) { flag++; digitalWrite(7,HIGH); break; }
-      dataFile.println();                 dataFile.flush();
-      digitalWrite(7,LOW);
-    }
+  
+  // Writing to SD Card
+  if ((flag<flagIncrement*sdErrorLimit-sdErrorLimit)&&(flag>0))   {flag--;}
+  if ((flag<flagIncrement*sdErrorLimit-sdErrorLimit)&&(dataFile)) {
+    digitalWrite(LED,HIGH);
+    DateTime now = RTC.now();           checkSD = millis();     // checks for SD removal
+    dataFile.print(millis());           dataFile.print(',');
+        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; digitalWrite(LED,LOW); goto timedout;}
+    dataFile.print(now.year()  ,DEC);   dataFile.print('/');
+    dataFile.print(now.month() ,DEC);   dataFile.print('/');
+        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; digitalWrite(LED,LOW); goto timedout;}
+    dataFile.print(now.day()   ,DEC);   dataFile.print(',');
+    dataFile.print(now.hour()  ,DEC);   dataFile.print(':');
+        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; digitalWrite(LED,LOW); goto timedout;}
+    dataFile.print(now.minute(),DEC);   dataFile.print(':');
+    dataFile.print(now.second(),DEC);
+        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; digitalWrite(LED,LOW); goto timedout;}
+    WRITE_CSV_ITEM(temp)
+    WRITE_CSV_VECTOR_ITEM(magnetometer)
+        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; digitalWrite(LED,LOW); goto timedout;}
+    WRITE_CSV_VECTOR_ITEM(gyroscope)
+    WRITE_CSV_VECTOR_ITEM(euler)
+        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; digitalWrite(LED,LOW); goto timedout;}
+    WRITE_CSV_VECTOR_ITEM(accelerometer)
+    WRITE_CSV_ITEM(v)
+    timedout:
+    dataFile.println();     dataFile.flush();
   }
+  
   if (time0 + loopDelay < millis()) {
     Serial.print(F("Schedule err: "));
     Serial.println(time0 + loopDelay - (signed long)millis());
@@ -173,4 +175,5 @@ void loop() {
     SEND(missed_deadlines, missed_deadlines);
   }
   else {delay(time0 + loopDelay - millis());}     // continuously adjusted for desired dataTime
+
 }

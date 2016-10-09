@@ -1,13 +1,14 @@
+
 #include <Wire.h>
 #include <Servo.h>
 #include <SPI.h>
 #include <SD.h>
 #include "RTClib.h"
-#include "communications.h"
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 #include <avr/pgmspace.h>
+#include <Telemetry.h>
 
 #define Kp 2.8
 #define Ki 0.8
@@ -42,10 +43,10 @@ float rollProp;
 float rollInt;
 float rollDer;
 
-#define SEND_VECTOR_ITEM(field, value)  \
-  SEND_ITEM(x_##field, value.x())       \
-  SEND_ITEM(y_##field, value.y())       \
-  SEND_ITEM(z_##field, value.z())
+#define SEND_VECTOR_ITEM(field, value) \
+  SEND_ITEM(field, value.x())          \
+  SEND_GROUP_ITEM(value.y())          \
+  SEND_GROUP_ITEM(value.z())
 
 #define WRITE_CSV_ITEM(value) \
   dataFile.print(F(", ")); dataFile.print(value);

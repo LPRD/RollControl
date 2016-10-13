@@ -65,7 +65,7 @@ void setup() {
   Serial.begin(38400, SERIAL_8N2);    Serial.println();
   servo1.write(v + servo1Offset);
   servo2.write(v + servo2Offset);
-
+  
   while (!bno.begin()) {                            // flashes to signal error
     Serial.println(F("BNO055 err"));
     digitalWrite(LED,LOW); delay(1000); digitalWrite(LED,HIGH);
@@ -80,8 +80,8 @@ void setup() {
       if (!SD.exists(filename)) {                   // opens if file doesn't exist
         dataFile = SD.open(filename, FILE_WRITE);
         Serial.print(F("\twriting "));
-        Serial.println(filename);
-        dataFile.println(F("abs time,sys date,sys time,temperature,x_magnetometer,y_magnetometer,z_magnetometer,x_gyro,y_gyro,z_gyro,x_euler_angle,y_euler_angle,z_euler_angle,x_acceleration,y_acceleration,z_acceleration,servo_angle"));
+        Serial.println(filename);                   //
+        dataFile.println(F("abs time,sys date,sys time,temperature,servo_angle,x_gyro,y_gyro,z_gyro,x_magnetometer,y_magnetometer,z_magnetometer,x_euler_angle,y_euler_angle,z_euler_angle,x_acceleration,y_acceleration,z_acceleration"));
         break;
       }
     }
@@ -93,13 +93,13 @@ void setup() {
 void loop() {
   long time0 = millis();
   i++;    if (i>=gyro_size)  { i = 0; }
-
-  imu::Vector<3> magnetometer  = bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER);
+  
   imu::Vector<3> gyroscope     = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
   imu::Vector<3> euler         = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
   imu::Vector<3> accelerometer = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
+  imu::Vector<3> magnetometer  = bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER);
   int8_t temp = bno.getTemp();
-  gyro[i] = gyroscope.z();              // change dep. on orientation (x,y,z)
+  gyro[i] = gyroscope.z();                          // change dep. on orientation (x,y,z)
     
   // Fixes reference errors with circular buffer
   b = i - 1;    if (b<1)  { b = b + gyro_size; }
@@ -133,11 +133,11 @@ void loop() {
   // Downlink
   BEGIN_SEND
   SEND_ITEM(temperature, temp);                     // 1 ms
-  SEND_VECTOR_ITEM(magnetometer,  magnetometer);    // 10 ms
+  SEND_ITEM(servo_angle, v);                        // 4 ms
   SEND_VECTOR_ITEM(gyro        ,  gyroscope);       // 10 ms
+  //SEND_VECTOR_ITEM(magnetometer,  magnetometer);    // 10 ms
   SEND_VECTOR_ITEM(euler_angle ,  euler);           // 18 ms
   SEND_VECTOR_ITEM(acceleration,  accelerometer);   // 18 ms
-  SEND_ITEM(servo_angle, v);                        // 4 ms
   END_SEND
   
   // Writing to SD Card
@@ -159,16 +159,17 @@ void loop() {
     WRITE_CSV_ITEM(temp)
     WRITE_CSV_VECTOR_ITEM(magnetometer)
         if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; digitalWrite(LED,LOW); goto timedout;}
-    WRITE_CSV_VECTOR_ITEM(gyroscope)
-    WRITE_CSV_VECTOR_ITEM(euler)
-        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; digitalWrite(LED,LOW); goto timedout;}
-    WRITE_CSV_VECTOR_ITEM(accelerometer)
     WRITE_CSV_ITEM(v)
+    WRITE_CSV_VECTOR_ITEM(gyroscope)
+        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; digitalWrite(LED,LOW); goto timedout;}
+    WRITE_CSV_VECTOR_ITEM(euler)
+    WRITE_CSV_VECTOR_ITEM(accelerometer)
     timedout:
     dataFile.println();     dataFile.flush();
   }
   
   if (time0 + loopDelay < millis()) {
+    digitalWrite(LED,LOW);
     Serial.print(F("Schedule err: "));
     Serial.println(time0 + loopDelay - (signed long)millis());
     missed_deadlines++;

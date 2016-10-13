@@ -1,3 +1,4 @@
+
 #define flying 0                // Change to 1 before flight    !!!!!!!!!!!!!!!!!!!!!!!!
 long time1;
 long time2;
@@ -6,11 +7,11 @@ long time2;
 #include <SPI.h>
 #include <SD.h>
 #include "RTClib.h"
-#include "communications.h"
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 #include <avr/pgmspace.h>
+#include <Telemetry.h>
 
 #define rollTarget 0.00         // desired angular rotation
 #define rollTol    0.00
@@ -45,16 +46,18 @@ int flag = 0;       long checkSD;
 int v = 90;
 float rollProp;  float rollInt;  float rollDer;
 
-#define SEND_VECTOR_ITEM(field,value) \
-  SEND_ITEM(x_##field, value.x())     \
-  SEND_ITEM(y_##field, value.y())     \
-  SEND_ITEM(z_##field, value.z())
-#define WRITE_CSV_ITEM(value)         \
-  dataFile.print(F(",")); dataFile.print(value);
+#define SEND_VECTOR_ITEM(field, value) \
+  SEND_ITEM(field, value.x())          \
+  SEND_GROUP_ITEM(value.y())          \
+  SEND_GROUP_ITEM(value.z())
+
+#define WRITE_CSV_ITEM(value) \
+  dataFile.print(F(", ")); dataFile.print(value);
 #define WRITE_CSV_VECTOR_ITEM(value)  \
   WRITE_CSV_ITEM(value.x())           \
   WRITE_CSV_ITEM(value.y())           \
   WRITE_CSV_ITEM(value.z())
+
 unsigned int missed_deadlines = 0;
 
 

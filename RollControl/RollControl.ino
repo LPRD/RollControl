@@ -1,6 +1,7 @@
 // Code for controlling rocket roll during flight via 2 counter-rotating fins powered by a servo
+// March 2017, Alex Bock
 
-#define flying 0                // Change to 1 before flight    !!!!!!!!!!!!!!!!!!!!!!!!
+#define flying 1                // Change to 1 before flight    !!!!!!!!!!!!!!!!!!!!!!!!
 #include <Wire.h>
 #include <Servo.h>
 #include <SPI.h>
@@ -15,7 +16,18 @@
 #define rollTarget 0.00         // desired angular rotation
 #define rollTol    0.00
 #define Kp  1
-#define Kd  0.5
+#define Kd  -0.5
+#define wc  3.927
+
+#define controlTime1  2         // time to execute roll maneuver
+#define controlTime2  5
+#define controlTime3  8
+#define controlPos1   90        // angle to maneuver to (relative to launch orientation)
+#define controlPos2   180
+#define controlPos3   270
+#define launchAccel   38        // m/s^2 acceleration threshold to recognize launch has occured (39 is highest allowed)
+long    launchTime;
+int     accel;
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
 Servo servo1;
@@ -27,22 +39,24 @@ char filename[] = "DATA000.csv";
 #define LED           10
 #define servo1Pin     3
 #define servo2Pin     2         // current setup
-#define gyro_size     8         // uses 0 (gyro_size-1 valid data points)
-#define loopDelay     200       // min 200
+#define data_size     3         // uses 0 (data_size-1 valid data points)
+#define loopDelay     200       // min 200 to avoid missing deadlines
 #define SDdelay       20
 #define flagIncrement 10
 #define sdErrorLimit  2
 #define dataTime ((float)loopDelay)/1000      // time between data
-float gyro[gyro_size];
-int i, j, k, l, m, n, o;
+float eulerNew,eulerOld;
+int i, j;
 int flag = 0;       long checkSD;
 
-// Offsets to make servos align vertically at exactly v=90
+// Offsets to make servos align vertically at v=90
 #define servo1Offset 4          // for MG995 #1
 #define servo2Offset 0          // for MG995 #2
 #define vMax 12                 // max angular deflection (avoids stall)
-int v = 90;
+int v = 90;                     // angle set to servo
+int cross180 = -1;              // fixes control errors near 0/360 deg
 float rollProp, rollDer;
+float delta,deltaOld;
 
 #define SEND_VECTOR_ITEM(field, value)\
   SEND_ITEM(field, value.x())         \
@@ -51,7 +65,7 @@ float rollProp, rollDer;
 
 #define WRITE_CSV_ITEM(value)         \
   dataFile.print(F(", ")); dataFile.print(value);
-  
+
 #define WRITE_CSV_VECTOR_ITEM(value)  \
   WRITE_CSV_ITEM(value.x())           \
   WRITE_CSV_ITEM(value.y())           \
@@ -62,6 +76,7 @@ long time1, time2;
 
 
 void setup() {
+  
   if (flying) { pinMode(LED,OUTPUT); }              //  makes LED flash brightly
   servo1.attach(3);
   servo2.attach(2);
@@ -94,47 +109,67 @@ void setup() {
 
 
 void loop() {
-  long time0 = millis();
-  i++;    if (i>=gyro_size)  { i = 0; }
   
+  // Waits for launch to be detected
+  if ((launchTime==0)&&(flying)) {
+    while(accel<launchAccel) {
+      imu::Vector<3> accelerometer = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
+      accel = accelerometer.z();
+      Serial.print(accel); Serial.print("  /  "); Serial.println(launchAccel);
+    }
+    launchTime = millis();
+    Serial.print("launchTime:");  Serial.println(launchTime);
+  }
+  
+  long time0 = millis();
+  eulerOld = eulerNew;
   imu::Vector<3> gyroscope     = bno.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
   imu::Vector<3> euler         = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
   imu::Vector<3> accelerometer = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
   imu::Vector<3> magnetometer  = bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER);
   int8_t temp = bno.getTemp();
-  gyro[i] = gyroscope.z();                          // change dep. on orientation of IMU (x,y,z)
+  eulerNew = euler.x();             // Depends on orientation of IMU with respect to rocket (x,y,z)
+    
+  // Checks if 180 deg has been crossed, fixes position errors for control
+  if ((eulerNew>180)&&(eulerOld>180)&&(eulerNew>270)&&(eulerOld<270)) { 
+    Serial.println("crossed CW");
+    cross180 = 1;
+  }
+  if ((eulerNew<180)&&(eulerOld<180)&&(eulerNew<90)&&(eulerOld>90)) { 
+    Serial.println("crossed CCW");
+    cross180 = -1;
+  }
   
-  // Fixes references with circular buffer of recent data
-  j = i - 1;    if (j<1)  { j = j + gyro_size; }
-  k = i - 2;    if (k<1)  { k = k + gyro_size; }
-  l = i - 3;    if (l<1)  { l = l + gyro_size; }
-  m = i - 4;    if (m<1)  { m = m + gyro_size; }
-  n = i - 5;    if (n<1)  { n = n + gyro_size; }
-  o = i - 6;    if (o<1)  { o = o + gyro_size; }
-  
+  if ((eulerNew< 90)&&(cross180>0)) { eulerNew = eulerNew + 360; }
+  if ((eulerNew>270)&&(cross180<0)) { eulerNew = eulerNew - 360; }
+    
   // Proportional-Derivative Control
-  rollProp =  (gyro[i]+gyro[j])/2-rollTarget;
-  rollDer  = ((gyro[i]-gyro[j])/(dataTime)+(gyro[i]-gyro[k])/(dataTime*2))/2;
+  rollProp =  eulerNew - rollTarget;
+  rollDer  =  gyroscope.z();
   
   if (abs(rollProp)>=rollTol) {
-        v = 90 + Kp*rollProp + Kd*rollDer;
-        if (v>90+vMax)      { v = 90 + vMax; }
-        else if (v<90-vMax) { v = 90 - vMax; }
-        servo1.write(v + servo1Offset);
-        servo2.write(v + servo2Offset);
+    delta = Kp*rollProp + Kd*rollDer;
+    //delta     = (1+wc*loopDelay)*deltaOld + wc*loopDelay*(Kp*rollProp + Kd*rollDer);    // adds rolloff
+    deltaOld  = delta;                        // saves current value for next iteration
+    if (delta>vMax)       { delta =  vMax; }
+    else if (delta<-vMax) { delta = -vMax; }
+    v = 90 + delta;
+    servo1.write(delta + 90 + servo1Offset);
+    servo2.write(delta + 90 + servo2Offset);
   }
   
   // Downlink
   BEGIN_SEND
-  SEND_ITEM(temperature, temp);                     // 1 ms
   SEND_ITEM(servo_angle, v);                        // 4 ms
-  SEND_VECTOR_ITEM(gyro        ,  gyroscope);       // 10 ms
-  SEND_VECTOR_ITEM(magnetometer,  magnetometer);    // 10 ms
   SEND_VECTOR_ITEM(euler_angle ,  euler);           // 18 ms
+  SEND_VECTOR_ITEM(gyro        ,  gyroscope);       // 10 ms
+  SEND_ITEM(temperature, temp);                     // 1 ms
+  SEND_VECTOR_ITEM(magnetometer,  magnetometer);    // 10 ms
   SEND_VECTOR_ITEM(acceleration,  accelerometer);   // 18 ms
   END_SEND
   
   // Writing to SD Card
+  // if() statements check for overly large time delays
   if ((flag<flagIncrement*sdErrorLimit-sdErrorLimit)&&(flag>0))   { flag--; }
   if ((flag<flagIncrement*sdErrorLimit-sdErrorLimit)&&(dataFile)) {
     DateTime now = RTC.now();           checkSD = millis();     // checks for SD removal
@@ -157,6 +192,7 @@ void loop() {
         if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
     WRITE_CSV_VECTOR_ITEM(euler)
     WRITE_CSV_VECTOR_ITEM(accelerometer)
+        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
     timedout:
     dataFile.println();     dataFile.flush();
   }

@@ -19,7 +19,7 @@
 #define Kd  -0.5
 #define wc  3.927
 
-#define controlTime1  2         // time to execute roll maneuver
+#define controlTime1  2         // time to execute roll maneuver (after launch detected)
 #define controlTime2  5
 #define controlTime3  8
 #define controlPos1   90        // angle to maneuver to (relative to launch orientation)
@@ -99,7 +99,7 @@ void setup() {
         dataFile = SD.open(filename, FILE_WRITE);
         Serial.print(F("\twriting "));
         Serial.println(filename);
-        dataFile.println(F("abs time,sys date,sys time,temperature,servo_angle,x_gyro,y_gyro,z_gyro,x_magnetometer,y_magnetometer,z_magnetometer,x_euler_angle,y_euler_angle,z_euler_angle,x_acceleration,y_acceleration,z_acceleration"));
+        dataFile.println(F("abs time,sys date,sys time,servo_angle,x_euler_angle,y_euler_angle,z_euler_angle,x_gyro,y_gyro,z_gyro,x_acceleration,y_acceleration,z_acceleration,x_magnetometer,y_magnetometer,z_magnetometer,temperature"));
         break;
       }
     }
@@ -132,11 +132,11 @@ void loop() {
     
   // Checks if 180 deg has been crossed, fixes position errors for control
   if ((eulerNew>180)&&(eulerOld>180)&&(eulerNew>270)&&(eulerOld<270)) { 
-    Serial.println("crossed CW");
+//    Serial.println("crossed CW");
     cross180 = 1;
   }
   if ((eulerNew<180)&&(eulerOld<180)&&(eulerNew<90)&&(eulerOld>90)) { 
-    Serial.println("crossed CCW");
+//    Serial.println("crossed CCW");
     cross180 = -1;
   }
   
@@ -154,6 +154,7 @@ void loop() {
     if (delta>vMax)       { delta =  vMax; }
     else if (delta<-vMax) { delta = -vMax; }
     v = 90 + delta;
+    Serial.println(v);
     servo1.write(delta + 90 + servo1Offset);
     servo2.write(delta + 90 + servo2Offset);
   }
@@ -184,14 +185,14 @@ void loop() {
     dataFile.print(now.minute(),DEC);   dataFile.print(':');
     dataFile.print(now.second(),DEC);
         if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
-    WRITE_CSV_ITEM(temp)
-    WRITE_CSV_VECTOR_ITEM(magnetometer)
-        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
     WRITE_CSV_ITEM(v)
-    WRITE_CSV_VECTOR_ITEM(gyroscope)
-        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
     WRITE_CSV_VECTOR_ITEM(euler)
+        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
+    WRITE_CSV_VECTOR_ITEM(gyroscope)
     WRITE_CSV_VECTOR_ITEM(accelerometer)
+        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
+    WRITE_CSV_VECTOR_ITEM(magnetometer)
+    WRITE_CSV_ITEM(temp)
         if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
     timedout:
     dataFile.println();     dataFile.flush();

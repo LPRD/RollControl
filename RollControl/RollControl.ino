@@ -1,5 +1,5 @@
 // Code for controlling rocket roll during flight via 2 counter-rotating fins powered by a servo
-// March 2017, Alex Bock
+// April 2017, Alex Bock
 
 #define flying 1                // Change to 1 before flight    !!!!!!!!!!!!!!!!!!!!!!!!
 #include <Wire.h>
@@ -15,8 +15,8 @@
 
 #define rollTarget 0.00         // desired angular rotation
 #define rollTol    0.00
-#define Kp  1
-#define Kd  -0.5
+#define Kp  0.65
+#define Kd -0.26
 #define wc  3.927
 
 #define controlTime1  2         // time to execute roll maneuver (after launch detected)
@@ -52,7 +52,7 @@ int flag = 0;       long checkSD;
 // Offsets to make servos align vertically at v=90
 #define servo1Offset 4          // for MG995 #1
 #define servo2Offset 0          // for MG995 #2
-#define vMax 12                 // max angular deflection (avoids stall)
+#define vMax 14                 // max angular deflection (avoids stall)
 int v = 90;                     // angle set to servo
 int cross180 = -1;              // fixes control errors near 0/360 deg
 float rollProp, rollDer;
@@ -78,9 +78,9 @@ long time1, time2;
 void setup() {
   
   if (flying) { pinMode(LED,OUTPUT); }              //  makes LED flash brightly
+  Serial.begin(38400, SERIAL_8N2);    Serial.println();
   servo1.attach(3);
   servo2.attach(2);
-  Serial.begin(38400, SERIAL_8N2);    Serial.println();
   servo1.write(v + servo1Offset);
   servo2.write(v + servo2Offset);
   

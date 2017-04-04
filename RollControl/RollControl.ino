@@ -2,6 +2,7 @@
 // April 2017, Alex Bock
 
 #define flying 1                // Change to 1 before flight    !!!!!!!!!!!!!!!!!!!!!!!!
+
 #include <Wire.h>
 #include <Servo.h>
 #include <SPI.h>
@@ -13,15 +14,15 @@
 #include <avr/pgmspace.h>
 #include <Telemetry.h>
 
-#define rollTarget 0.00         // desired angular rotation
-#define rollTol    0.00
+#define rollTarget 0.00         // desired angular position
+#define rollTol    0.00         
 #define Kp  0.65
 #define Kd -0.26
 #define wc  3.927
 
-#define controlTime1  2         // time to execute roll maneuver (after launch detected)
-#define controlTime2  5
-#define controlTime3  8
+#define controlTime1  4000      // time to execute roll maneuver (ms after launch detected)
+#define controlTime2  7000
+#define controlTime3  10000
 #define controlPos1   90        // angle to maneuver to (relative to launch orientation)
 #define controlPos2   180
 #define controlPos3   270
@@ -40,14 +41,16 @@ char filename[] = "DATA000.csv";
 #define servo1Pin     3
 #define servo2Pin     2         // current setup
 #define data_size     3         // uses 0 (data_size-1 valid data points)
-#define loopDelay     200       // min 200 to avoid missing deadlines
-#define SDdelay       20
+#define loopDelay     100       // min 200 to avoid missing deadlines (100 is fairly stable)
+#define SDdelay       10
 #define flagIncrement 10
 #define sdErrorLimit  2
+#define saveInterval  3000
 #define dataTime ((float)loopDelay)/1000      // time between data
 float eulerNew,eulerOld;
 int i, j;
-int flag = 0;       long checkSD;
+int flag = 0;
+long checkSD,saveFlag,sheduleErrorTime;
 
 // Offsets to make servos align vertically at v=90
 #define servo1Offset 4          // for MG995 #1
@@ -72,13 +75,12 @@ float delta,deltaOld;
   WRITE_CSV_ITEM(value.z())
 
 unsigned int missed_deadlines = 0;
-long time1, time2;
 
 
 void setup() {
   
   if (flying) { pinMode(LED,OUTPUT); }              //  makes LED flash brightly
-  Serial.begin(38400, SERIAL_8N2);    Serial.println();
+  Serial.begin(39400, SERIAL_8N2);    Serial.println();
   servo1.attach(3);
   servo2.attach(2);
   servo1.write(v + servo1Offset);
@@ -99,7 +101,7 @@ void setup() {
         dataFile = SD.open(filename, FILE_WRITE);
         Serial.print(F("\twriting "));
         Serial.println(filename);
-        dataFile.println(F("abs time,sys date,sys time,servo_angle,x_euler_angle,y_euler_angle,z_euler_angle,x_gyro,y_gyro,z_gyro,x_acceleration,y_acceleration,z_acceleration,x_magnetometer,y_magnetometer,z_magnetometer,temperature"));
+        dataFile.println(F("abs time,sys date,sys time,servo_angle,x_euler_angle,y_euler_angle,z_euler_angle,x_gyro,y_gyro,z_gyro,"));
         break;
       }
     }
@@ -115,10 +117,10 @@ void loop() {
     while(accel<launchAccel) {
       imu::Vector<3> accelerometer = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
       accel = accelerometer.z();
-      Serial.print(accel); Serial.print("  /  "); Serial.println(launchAccel);
+      //Serial.print(accel); Serial.print("  /  "); Serial.println(launchAccel);
     }
     launchTime = millis();
-    Serial.print("launchTime:");  Serial.println(launchTime);
+    //Serial.print("launchTime:");  Serial.println(launchTime);
   }
   
   long time0 = millis();
@@ -131,13 +133,12 @@ void loop() {
   eulerNew = euler.x();             // Depends on orientation of IMU with respect to rocket (x,y,z)
     
   // Checks if 180 deg has been crossed, fixes position errors for control
+  //    an issue in this logic causes the "0" point to change
   if ((eulerNew>180)&&(eulerOld>180)&&(eulerNew>270)&&(eulerOld<270)) { 
-//    Serial.println("crossed CW");
-    cross180 = 1;
+    cross180 = 1;       //Serial.println("crossed CW");
   }
   if ((eulerNew<180)&&(eulerOld<180)&&(eulerNew<90)&&(eulerOld>90)) { 
-//    Serial.println("crossed CCW");
-    cross180 = -1;
+    cross180 = -1;      //Serial.println("crossed CCW");
   }
   
   if ((eulerNew< 90)&&(cross180>0)) { eulerNew = eulerNew + 360; }
@@ -154,7 +155,7 @@ void loop() {
     if (delta>vMax)       { delta =  vMax; }
     else if (delta<-vMax) { delta = -vMax; }
     v = 90 + delta;
-    Serial.println(v);
+    //Serial.println(v);
     servo1.write(delta + 90 + servo1Offset);
     servo2.write(delta + 90 + servo2Offset);
   }
@@ -168,6 +169,7 @@ void loop() {
   SEND_VECTOR_ITEM(magnetometer,  magnetometer);    // 10 ms
   SEND_VECTOR_ITEM(acceleration,  accelerometer);   // 18 ms
   END_SEND
+
   
   // Writing to SD Card
   // if() statements check for overly large time delays
@@ -178,10 +180,9 @@ void loop() {
         if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
     dataFile.print(now.year()  ,DEC);   dataFile.print('/');
     dataFile.print(now.month() ,DEC);   dataFile.print('/');
-        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
     dataFile.print(now.day()   ,DEC);   dataFile.print(',');
-    dataFile.print(now.hour()  ,DEC);   dataFile.print(':');
         if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
+    dataFile.print(now.hour()  ,DEC);   dataFile.print(':');
     dataFile.print(now.minute(),DEC);   dataFile.print(':');
     dataFile.print(now.second(),DEC);
         if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
@@ -189,18 +190,22 @@ void loop() {
     WRITE_CSV_VECTOR_ITEM(euler)
         if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
     WRITE_CSV_VECTOR_ITEM(gyroscope)
-    WRITE_CSV_VECTOR_ITEM(accelerometer)
-        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
-    WRITE_CSV_VECTOR_ITEM(magnetometer)
-    WRITE_CSV_ITEM(temp)
-        if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
+        
     timedout:
-    dataFile.println();     dataFile.flush();
+    dataFile.println();
+    // saves to SD Card every [saveInterval] ms
+    if (millis()>saveInterval*saveFlag+sheduleErrorTime) {
+      dataFile.flush();
+      saveFlag++;
+    }
   }
+  
   
   if (time0 + loopDelay < millis()) {
     Serial.print(F("Schedule err: "));
     Serial.println(time0 + loopDelay - (signed long)millis());
+    sheduleErrorTime = sheduleErrorTime + (time0 + loopDelay - (signed long)millis());
+    Serial.println(sheduleErrorTime);
     missed_deadlines++;
     SEND(missed_deadlines, missed_deadlines);
   }

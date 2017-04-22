@@ -14,7 +14,7 @@
 #include <avr/pgmspace.h>
 #include <Telemetry.h>
 
-#define rollTarget 0.00         // desired angular position
+int     rollTarget = 0;         // desired angular position
 #define rollTol    0.00         
 #define Kp  0.65
 #define Kd -0.26
@@ -27,7 +27,8 @@
 #define controlPos2   180
 #define controlPos3   270
 #define launchAccel   38        // m/s^2 acceleration threshold to recognize launch has occured (39 is highest allowed)
-long    launchTime;
+long    launchTime = 0;
+long    timeAfterLaunch = 0;
 int     accel;
 
 Adafruit_BNO055 bno = Adafruit_BNO055(55);
@@ -80,7 +81,7 @@ unsigned int missed_deadlines = 0;
 void setup() {
   
   if (flying) { pinMode(LED,OUTPUT); }              //  makes LED flash brightly
-  Serial.begin(39400, SERIAL_8N2);    Serial.println();
+  Serial.begin(38400, SERIAL_8N2);    Serial.println();
   servo1.attach(3);
   servo2.attach(2);
   servo1.write(v + servo1Offset);
@@ -120,8 +121,13 @@ void loop() {
       //Serial.print(accel); Serial.print("  /  "); Serial.println(launchAccel);
     }
     launchTime = millis();
-    //Serial.print("launchTime:");  Serial.println(launchTime);
   }
+  
+  timeAfterLaunch = millis() - launchTime;
+  if      (timeAfterLaunch > controlTime3) {rollTarget = controlPos3;}
+  else if (timeAfterLaunch > controlTime2) {rollTarget = controlPos2;}
+  else if (timeAfterLaunch > controlTime1) {rollTarget = controlPos1;}
+  //Serial.print("rollTarget   ");  Serial.println(rollTarget);
   
   long time0 = millis();
   eulerOld = eulerNew;

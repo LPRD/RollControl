@@ -13,16 +13,17 @@
 #include <utility/imumaths.h>
 #include <avr/pgmspace.h>
 #include <Telemetry.h>
+#define baudRate 38400
 
 int     rollTarget = 0;         // desired angular position
 #define rollTol    0.00         
-#define Kp  0.65
-#define Kd -0.26
+#define Kp  1.30
+#define Kd -0.52
 #define wc  3.927
 
-#define controlTime1  4000      // time to execute roll maneuver (ms after launch detected)
+#define controlTime1  3000      // time to execute roll maneuver (ms after launch detected)
 #define controlTime2  7000
-#define controlTime3  10000
+#define controlTime3  11000
 #define controlPos1   90        // angle to maneuver to (relative to launch orientation)
 #define controlPos2   180
 #define controlPos3   270
@@ -48,20 +49,20 @@ char filename[] = "DATA000.csv";
 #define sdErrorLimit  2
 #define saveInterval  3000
 #define dataTime ((float)loopDelay)/1000      // time between data
-float eulerNew,eulerOld;
+float eulerNew, eulerOld, eulerAbs;
 int i, j;
 int flag = 0;
-long checkSD,saveFlag,sheduleErrorTime;
+long checkSD, saveFlag, sheduleErrorTime;
 
 // Offsets to make servos align vertically at v=90
 #define servo1Offset 4          // for MG995 #1
 #define servo2Offset 0          // for MG995 #2
 #define vMax 14                 // max angular deflection (avoids stall)
 int v = 90;                     // angle set to servo
-int cross180 = -1;              // fixes control errors near 0/360 deg
 float rollProp, rollDer;
-float delta,deltaOld;
+float delta, deltaOld;
 
+unsigned int missed_deadlines = 0;
 #define SEND_VECTOR_ITEM(field, value)\
   SEND_ITEM(field, value.x())         \
   SEND_GROUP_ITEM(value.y())          \
@@ -75,13 +76,11 @@ float delta,deltaOld;
   WRITE_CSV_ITEM(value.y())           \
   WRITE_CSV_ITEM(value.z())
 
-unsigned int missed_deadlines = 0;
-
 
 void setup() {
   
   if (flying) { pinMode(LED,OUTPUT); }              //  makes LED flash brightly
-  Serial.begin(38400, SERIAL_8N2);    Serial.println();
+  Serial.begin(baudRate, SERIAL_8N2);    Serial.println();
   servo1.attach(3);
   servo2.attach(2);
   servo1.write(v + servo1Offset);
@@ -123,6 +122,7 @@ void loop() {
     launchTime = millis();
   }
   
+  // Sets rollTarget based on time after launch
   timeAfterLaunch = millis() - launchTime;
   if      (timeAfterLaunch > controlTime3) {rollTarget = controlPos3;}
   else if (timeAfterLaunch > controlTime2) {rollTarget = controlPos2;}
@@ -137,21 +137,14 @@ void loop() {
   imu::Vector<3> magnetometer  = bno.getVector(Adafruit_BNO055::VECTOR_MAGNETOMETER);
   int8_t temp = bno.getTemp();
   eulerNew = euler.x();             // Depends on orientation of IMU with respect to rocket (x,y,z)
-    
-  // Checks if 180 deg has been crossed, fixes position errors for control
-  //    an issue in this logic causes the "0" point to change
-  if ((eulerNew>180)&&(eulerOld>180)&&(eulerNew>270)&&(eulerOld<270)) { 
-    cross180 = 1;       //Serial.println("crossed CW");
-  }
-  if ((eulerNew<180)&&(eulerOld<180)&&(eulerNew<90)&&(eulerOld>90)) { 
-    cross180 = -1;      //Serial.println("crossed CCW");
-  }
-  
-  if ((eulerNew< 90)&&(cross180>0)) { eulerNew = eulerNew + 360; }
-  if ((eulerNew>270)&&(cross180<0)) { eulerNew = eulerNew - 360; }
+
+  // Fixes position errors around 0/360 for control
+  if      (eulerNew-eulerOld> 180)  {eulerAbs += eulerNew-eulerOld-360;}
+  else if (eulerNew-eulerOld<-180)  {eulerAbs += eulerNew-eulerOld+360;}
+  else                              {eulerAbs += eulerNew-eulerOld;}
     
   // Proportional-Derivative Control
-  rollProp =  eulerNew - rollTarget;
+  rollProp =  eulerAbs - rollTarget;
   rollDer  =  gyroscope.z();
   
   if (abs(rollProp)>=rollTol) {
@@ -175,8 +168,7 @@ void loop() {
   SEND_VECTOR_ITEM(magnetometer,  magnetometer);    // 10 ms
   SEND_VECTOR_ITEM(acceleration,  accelerometer);   // 18 ms
   END_SEND
-
-  
+    
   // Writing to SD Card
   // if() statements check for overly large time delays
   if ((flag<flagIncrement*sdErrorLimit-sdErrorLimit)&&(flag>0))   { flag--; }
@@ -196,7 +188,7 @@ void loop() {
     WRITE_CSV_VECTOR_ITEM(euler)
         if (millis()>checkSD+SDdelay){flag=flag+flagIncrement; goto timedout;}
     WRITE_CSV_VECTOR_ITEM(gyroscope)
-        
+    
     timedout:
     dataFile.println();
     // saves to SD Card every [saveInterval] ms
